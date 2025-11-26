@@ -1,38 +1,25 @@
-
 import streamlit as st
 import pandas as pd
 import pickle
-import numpy as np
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.decomposition import PCA
 
-# --- Load the trained model and preprocessors ---
-# Muat model, preprocessor, dan PCA dari file pickle
+# ---- Load full pipeline model (preprocessor + PCA + model) ----
 try:
-    with open('gradient_boosting_regressor_model.pkl', 'rb') as file:
-        model = pickle.load(file)
-    with open('preprocessor.pkl', 'rb') as file:
-        preprocessor = pickle.load(file)
-    with open('pca_transformer.pkl', 'rb') as file:
-        pca_transformer = pickle.load(file)
-    st.success("Model dan preprocessor berhasil dimuat!")  # Feedback sukses
+    with open('full_model.pkl', 'rb') as file:
+        full_model = pickle.load(file)
+    st.success("Model berhasil dimuat!")
 except Exception as e:
-    st.error(f"Error loading model or preprocessors: {e}")
+    st.error(f"Gagal memuat model: {e}")
     st.stop()
 
-# Streamlit app title
+# Streamlit title
 st.title('Prediksi Harga Rumah Jabodetabek')
-st.write('Aplikasi untuk memprediksi harga rumah berdasarkan properti yang diberikan.')
-st.write('**Disclaimer**: Prediksi ini adalah estimasi berdasarkan model machine learning dan bukan nilai pasti. Gunakan sebagai referensi saja.')
+st.write('Aplikasi untuk memprediksi harga rumah berdasarkan properti.')
+st.write('**Catatan:** Hasil bersifat estimasi dan bukan acuan harga pasti.')
 
-# Sidebar for user inputs
+# Sidebar Input
 st.sidebar.header('Input Properti Rumah')
 
 def user_input_features():
-    # Sliders untuk fitur numerik
     bedrooms = st.sidebar.slider('Jumlah Kamar Tidur', 1, 8, 3)
     bathrooms = st.sidebar.slider('Jumlah Kamar Mandi', 1, 4, 2)
     land_size_m2 = st.sidebar.slider('Luas Tanah (m2)', 10.0, 400.0, 100.0)
@@ -42,8 +29,6 @@ def user_input_features():
     building_age = st.sidebar.slider('Usia Bangunan (tahun)', 0, 15, 0)
     garages = st.sidebar.slider('Jumlah Garasi', 0, 2, 0)
 
-    # Opsi kategorikal - hardcoded untuk deployment sederhana
-    # Catatan: Jika dataset training berubah, update list ini secara manual atau muat dari file
     city_options = ['Bekasi', 'Bogor', 'Depok', 'Jakarta Barat', 'Jakarta Pusat',
                     'Jakarta Selatan', 'Jakarta Timur', 'Jakarta Utara', 'Tangerang']
     furnishing_options = ['unfurnished', 'semi furnished', 'furnished']
@@ -63,63 +48,38 @@ def user_input_features():
         'city': city,
         'furnishing': furnishing
     }
-    features = pd.DataFrame(data, index=[0])
-    return features
+    return pd.DataFrame(data, index=[0])
 
-# Tombol reset untuk mengatur ulang input
+# Reset button
 if st.sidebar.button('Reset Input'):
-    st.experimental_rerun()  # Reload app untuk reset slider/selectbox
+    st.experimental_rerun()
 
-df_input_original = user_input_features()
+df_input = user_input_features()
 
 st.subheader('Parameter Input Pengguna:')
-st.write(df_input_original)
+st.write(df_input)
 
-# Fungsi validasi input
+# Validasi input
 def validate_input(df):
     errors = []
-    if df['bedrooms'].iloc[0] < 1:
-        errors.append("Jumlah kamar tidur minimal 1.")
     if df['building_size_m2'].iloc[0] > df['land_size_m2'].iloc[0]:
         errors.append("Luas bangunan tidak boleh lebih besar dari luas tanah.")
-    if df['land_size_m2'].iloc[0] < 10 or df['building_size_m2'].iloc[0] < 10:
-        errors.append("Luas tanah dan bangunan minimal 10 m².")
     return errors
 
-# Make prediction
+# Predict button
 if st.sidebar.button('Prediksi Harga'):
-    # Validasi input terlebih dahulu
-    validation_errors = validate_input(df_input_original)
+    validation_errors = validate_input(df_input)
     if validation_errors:
-        for error in validation_errors:
-            st.error(error)
-        st.stop()  # Cegah prediksi jika ada error
-    
+        for err in validation_errors:
+            st.error(err)
+        st.stop()
+
     try:
-        # Pastikan urutan kolom sesuai dengan yang diharapkan oleh preprocessor
-        expected_original_features_order = [
-            'bedrooms', 'bathrooms', 'land_size_m2', 'building_size_m2',
-            'carports', 'floors', 'building_age', 'garages', 'city', 'furnishing'
-        ]
-        
-        # Reorder DataFrame untuk memastikan konsistensi
-        input_data_for_preprocessing = df_input_original[expected_original_features_order]
-        
-        # Transformasi menggunakan preprocessor
-        transformed_input = preprocessor.transform(input_data_for_preprocessing)
-        
-        # Terapkan PCA
-        pca_transformed_input = pca_transformer.transform(transformed_input)
-        
-        # Prediksi harga
-        prediction = model.predict(pca_transformed_input)
-        
-        # Tampilkan hasil
-        st.subheader('Hasil Prediksi Harga Rumah:')
-        st.write(f"Harga Diprediksi: Rp {prediction[0]:,.2f}")
-        st.info("Prediksi ini berdasarkan data historis. Konsultasikan dengan ahli properti untuk nilai akurat.")
-        
+        # langsung prediksi dari full pipeline
+        prediction = full_model.predict(df_input)[0]
+
+        st.subheader("Hasil Prediksi Harga Rumah:")
+        st.write(f"**Rp {prediction:,.2f}**")
+        st.info("Prediksi ini berbasis machine learning dan hanya untuk referensi.")
     except Exception as e:
         st.error(f"Terjadi kesalahan saat melakukan prediksi: {e}")
-        st.exception(e)  # Tampilkan traceback untuk debugging
-
